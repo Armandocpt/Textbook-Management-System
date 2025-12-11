@@ -1,0 +1,1244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Textbook Register - Barcode Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.9/html5-qrcode.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    
+    <!-- JsBarcode Library for generating linear barcodes (Code 128) -->
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fb;
+        }
+        .container {
+            max-width: 1000px;
+        }
+        .card {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+        }
+        #reader {
+            width: 100%;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid #3b82f6; 
+        }
+        /* Style for individual Barcodes in the batch generator for printing */
+        .barcode-item-print {
+            display: inline-block;
+            text-align: center;
+            margin: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            width: 250px; /* Fixed width for better layout */
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            background-color: white;
+            break-inside: avoid; /* Prevent breaking across print pages */
+        }
+        .barcode-item-print svg {
+            display: block;
+            margin: 0 auto 5px auto;
+            max-width: 100%;
+        }
+        /* Hide the full ID text for compactness, only show the barcode value */
+        .barcode-id-text {
+            font-family: monospace;
+            font-size: 10px;
+            display: block;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app" class="container mx-auto p-4 md:p-8">
+        <header class="mb-8 p-4 bg-white rounded-xl shadow-lg">
+            <h1 class="text-3xl font-extrabold text-blue-800 mb-2">Textbook Management System</h1>
+            <p class="text-gray-600">Master Inventory and Transaction Register.</p>
+            <p id="user-info" class="text-sm mt-3 text-gray-500"></p>
+        </header>
+
+        <div id="status-message" class="text-center p-6 rounded-xl bg-yellow-100 text-yellow-700 font-medium mb-6">
+            <div id="loading-spinner" class="flex items-center justify-center space-x-2">
+                <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Initializing Firebase and authenticating...
+            </div>
+            <span id="error-text" class="hidden"></span>
+        </div>
+        
+        <!-- Navigation Buttons -->
+        <div class="mb-8 flex space-x-4">
+            <button id="show-register-btn" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-150">
+                View Issue Register
+            </button>
+            <button id="show-inventory-btn" class="py-2 px-4 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600 transition duration-150">
+                Manage Master Inventory
+            </button>
+            <!-- Updated Navigation Button Text -->
+            <button id="show-qr-generator-btn" class="py-2 px-4 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition duration-150">
+                Batch Barcode Generator
+            </button>
+        </div>
+
+
+        <!-- ======================================================= -->
+        <!-- 1. ISSUE REGISTER & RETURN SECTION                      -->
+        <!-- ======================================================= -->
+
+        <div id="register-page">
+
+            <div id="issue-form-section" class="bg-white p-6 rounded-xl card mb-8 hidden">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">Issue a Textbook</h2>
+                <form id="issue-form" class="space-y-4">
+                    <div>
+                        <label for="learnerName" class="block text-sm font-medium text-gray-700">Learner Name</label>
+                        <input type="text" id="learnerName" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+                    </div>
+                    <div>
+                        <label for="masterBookSelect" class="block text-sm font-medium text-gray-700">Select Textbook Title</label>
+                        <!-- Updated Select Dropdown -->
+                        <select id="masterBookSelect" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border bg-white">
+                            <option value="" disabled selected>Loading Master Inventory...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="isbn" class="block text-sm font-medium text-gray-700">Unique Barcode ID (Scanned)</label>
+                        <div class="flex space-x-2 mt-1">
+                            <input type="text" id="isbn" required class="block w-full rounded-lg border-gray-300 shadow-sm bg-gray-100 text-gray-600 p-2 border select-text">
+                            <button type="button" id="scan-issue-btn" class="flex-shrink-0 flex items-center justify-center p-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg shadow-md transition duration-150 ease-in-out text-sm">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 mr-1">
+                                    <path fill-rule="evenodd" d="M1 5.25A.75.75 0 0 1 1.75 4h1.107c.504 0 .983.18 1.341.5l1.986 2.05A.75.75 0 0 1 6.37 7.5H4.128a1.5 1.5 0 0 0-.897.288L2.46 8.583a.75.75 0 0 1-.772.062L1 8.25v-3Z" clip-rule="evenodd" />
+                                    <path fill-rule="evenodd" d="M19 5.25A.75.75 0 0 0 18.25 4h-1.107a.75.75 0 0 0-1.341.5L13.816 6.5A.75.75 0 0 1 13.63 7.5h2.242a1.5 1.5 0 0 0 .897.288l.771.295a.75.75 0 0 0 .772-.062L19 8.25v-3Z" clip-rule="evenodd" />
+                                    <path fill-rule="evenodd" d="M3.13 9.488a.75.75 0 0 1 .481-.825l3.86-.884a.75.75 0 0 1 .186 1.488l-3.86.884a.75.75 0 0 1-.481-.663ZM14.992 9.488a.75.75 0 0 1 .481-.825l3.86-.884a.75.75 0 1 1 .186 1.488l-3.86.884a.75.75 0 0 1-.481-.663ZM14.394 13.04a.75.75 0 0 0 1.105-.285l.77-.945a.75.75 0 0 0-.106-.99l-3.328-2.663a.75.75 0 0 0-1.125.864l1.64 1.792a.75.75 0 0 1-.168 1.144L7.5 14.25h-1.5a.75.75 0 0 0 0 1.5h.725l-.261 1.043a.75.75 0 1 0 1.463.366l.328-1.312a1.5 1.5 0 0 1 1.468-.962h1.498a1.5 1.5 0 0 1 1.468.962l.328 1.312a.75.75 0 0 0 1.463-.366l-.261-1.043h.725a.75.75 0 0 0 0-1.5h-1.5l-1.002-1.002Z" clip-rule="evenodd" />
+                                </svg>
+                                Scan Book Code
+                            </button>
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition duration-150 ease-in-out">
+                        Record Issue
+                    </button>
+                </form>
+                <div id="form-message" class="mt-3 text-sm hidden"></div>
+            </div>
+
+            <div id="return-scan-button-section" class="bg-purple-50 p-6 rounded-xl card mb-8 hidden">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">Quick Return via Barcode</h2>
+                <p class="text-gray-600 mb-4">Scan the unique barcode on the book to instantly find and return it.</p>
+                <button id="scan-return-btn" class="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 text-white font-bold text-lg rounded-lg shadow-md transition duration-150 ease-in-out flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 mr-3">
+                        <path fill-rule="evenodd" d="M1.5 8.25a.75.75 0 0 1 .75-.75h18a.75.75 0 0 1 0 1.5h-18a.75.75 0 0 1-.75-.75ZM1.5 15.75a.75.75 0 0 1 .75-.75h18a.75.75 0 0 1 0 1.5h-18a.75.75 0 0 1-.75-.75Z" clip-rule="evenodd" />
+                        <path d="M18.75 1.875a.75.75 0 0 0-1.29-.55l-2.029 2.135a.75.75 0 0 0 .285 1.34l.322.09c.143.042.288.077.435.107l1.042.21a.75.75 0 0 0 .616-.453l.35-.918ZM15.82 2.895a.75.75 0 0 0-.58.175l-.26.242c-.2.185-.436.331-.699.428l-.053.018a.75.75 0 0 0-.272 1.155.75.75 0 0 0 1.155.272c.03-.01.06-.021.09-.033.24-.092.464-.225.665-.398l.267-.253a.75.75 0 0 0-.175-1.29Z" />
+                        <path d="M8.25 1.875A.75.75 0 0 0 6.96 1.325l-2.029 2.135a.75.75 0 0 0 .285 1.34l.322.09c.143.042.288.077.435.107l1.042.21a.75.75 0 0 0 .616-.453l.35-.918ZM5.18 2.895a.75.75 0 0 0-.58.175l-.26.242c-.2.185-.436.331-.699.428l-.053.018a.75.75 0 0 0-.272 1.155.75.75 0 0 0 1.155.272c.03-.01.06-.021.09-.033.24-.092.464-.225.665-.398l.267-.253a.75.75 0 0 0-.175-1.29Z" />
+                    </svg>
+                    Scan Book for Return
+                </button>
+            </div>
+
+
+            <div id="register-section" class="bg-white p-6 rounded-xl card hidden">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">Currently Issued Textbooks</h2>
+
+                <div id="register-list" class="space-y-4">
+                    </div>
+
+                <p id="empty-state" class="text-center text-gray-500 p-8 hidden">
+                    Hooray! No books are currently issued.
+                </p>
+            </div>
+        </div>
+
+        <!-- ======================================================= -->
+        <!-- 2. INVENTORY MANAGEMENT SECTION                         -->
+        <!-- ======================================================= -->
+
+        <div id="inventory-page" class="hidden">
+            <div id="inventory-form-section" class="bg-white p-6 rounded-xl card mb-8">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">Add New Textbook to Master Inventory</h2>
+                <form id="inventory-form" class="space-y-4">
+                    <div>
+                        <label for="invBookTitle" class="block text-sm font-medium text-gray-700">Book Title</label>
+                        <input type="text" id="invBookTitle" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+                    </div>
+                    <div class="flex space-x-4">
+                        <div class="flex-1">
+                             <label for="invSubject" class="block text-sm font-medium text-gray-700">Subject</label>
+                            <input type="text" id="invSubject" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+                        </div>
+                         <div class="flex-1">
+                             <label for="invISBN" class="block text-sm font-medium text-gray-700">Master ISBN / Key</label>
+                            <div class="flex space-x-2 mt-1">
+                                <input type="text" id="invISBN" required class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+                                <button type="button" id="scan-inventory-isbn-btn" class="flex-shrink-0 flex items-center justify-center p-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg shadow-md transition duration-150 ease-in-out text-sm">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 mr-1">
+                                        <path fill-rule="evenodd" d="M1 5.25A.75.75 0 0 1 1.75 4h1.107c.504 0 .983.18 1.341.5l1.986 2.05A.75.75 0 0 1 6.37 7.5H4.128a1.5 1.5 0 0 0-.897.288L2.46 8.583a.75.75 0 0 1-.772.062L1 8.25v-3Z" clip-rule="evenodd" />
+                                        <path fill-rule="evenodd" d="M19 5.25A.75.75 0 0 0 18.25 4h-1.107a.75.75 0 0 0-1.341.5L13.816 6.5A.75.75 0 0 1 13.63 7.5h2.242a1.5 1.5 0 0 0 .897.288l.771.295a.75.75 0 0 0 .772-.062L19 8.25v-3Z" clip-rule="evenodd" />
+                                        <path fill-rule="evenodd" d="M3.13 9.488a.75.75 0 0 1 .481-.825l3.86-.884a.75.75 0 0 1 .186 1.488l-3.86.884a.75.75 0 0 1-.481-.663ZM14.992 9.488a.75.75 0 0 1 .481-.825l3.86-.884a.75.75 0 1 1 .186 1.488l-3.86.884a.75.75 0 0 1-.481-.663ZM14.394 13.04a.75.75 0 0 0 1.105-.285l.77-.945a.75.75 0 0 0-.106-.99l-3.328-2.663a.75.75 0 0 0-1.125.864l1.64 1.792a.75.75 0 0 1-.168 1.144L7.5 14.25h-1.5a.75.75 0 0 0 0 1.5h.725l-.261 1.043a.75.75 0 1 0 1.463.366l.328-1.312a1.5 1.5 0 0 1 1.468-.962h1.498a1.5 1.5 0 0 1 1.468.962l.328 1.312a.75.75 0 0 0 1.463-.366l-.261-1.043h.725a.75.75 0 0 0 0-1.5h-1.5l-1.002-1.002Z" clip-rule="evenodd" />
+                                    </svg>
+                                    Scan ISBN
+                                </button>
+                            </div>
+                        </div>
+                        <div class="w-1/4">
+                             <label for="invStockCount" class="block text-sm font-medium text-gray-700">Total Stock</label>
+                            <input type="number" id="invStockCount" required min="1" value="1" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full py-2 px-4 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg shadow-md transition duration-150 ease-in-out">
+                        Add Book to Master Inventory
+                    </button>
+                </form>
+                <div id="inventory-form-message" class="mt-3 text-sm hidden"></div>
+            </div>
+
+            <div id="inventory-list-section" class="bg-white p-6 rounded-xl card">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">Master Textbook List</h2>
+                 <p class="text-gray-600 mb-4">Total distinct titles in inventory: <span id="inventory-count" class="font-bold text-blue-600">0</span></p>
+
+                <div id="inventory-list" class="space-y-4">
+                    <!-- Inventory items will be rendered here -->
+                </div>
+
+                <p id="inventory-empty-state" class="text-center text-gray-500 p-8 hidden">
+                    No textbooks recorded in the Master Inventory.
+                </p>
+            </div>
+        </div>
+
+        <!-- ======================================================= -->
+        <!-- 3. BARCODE BATCH GENERATOR SECTION                      -->
+        <!-- ======================================================= -->
+        <div id="qr-generator-page" class="hidden">
+            <div id="qr-generator-form-section" class="bg-white p-6 rounded-xl card mb-8">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">Batch Barcode Generator</h2>
+                <p class="text-gray-600 mb-4">Generate unique, scannable Code 128 barcodes for labeling your physical textbook copies.</p>
+                <form id="qr-batch-form" class="space-y-4">
+                    <div>
+                        <label for="batchBookSelect" class="block text-sm font-medium text-gray-700">Select Master Textbook Title</label>
+                        <select id="batchBookSelect" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border bg-white">
+                            <option value="" disabled selected>Loading Master Inventory...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="batchCount" class="block text-sm font-medium text-gray-700">Number of Codes to Generate (Max 100)</label>
+                        <input type="number" id="batchCount" required min="1" max="100" value="10" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
+                    </div>
+                    <button type="submit" class="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-md transition duration-150 ease-in-out">
+                        Generate Unique Barcodes
+                    </button>
+                </form>
+            </div>
+
+            <div id="qr-output-section" class="bg-white p-6 rounded-xl card hidden">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-semibold text-gray-800">Generated Barcodes (Code 128)</h3>
+                    <button id="print-batch-btn" class="py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold transition duration-150">
+                        Print All Codes
+                    </button>
+                </div>
+                
+                <p class="text-sm text-gray-600 mb-4">Applying these unique stickers to each physical copy will make the issue/return process faster.</p>
+                <div id="qr-batch-output" class="flex flex-wrap gap-4 justify-start">
+                    <!-- Generated Barcodes will go here -->
+                </div>
+            </div>
+        </div>
+        <!-- ======================================================= -->
+
+
+    </div>
+
+    <!-- Scanner Modal (Used for Returns and Barcode Capture) -->
+    <div id="scanner-modal" class="fixed inset-0 bg-gray-900 bg-opacity-95 z-50 flex flex-col items-center justify-center p-4 hidden">
+        <div class="w-full max-w-lg bg-white rounded-xl shadow-2xl p-6 relative">
+            <button id="close-scanner-btn" class="absolute top-4 right-4 text-gray-400 hover:text-gray-700 transition duration-150">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+            </button>
+
+            <h2 id="scanner-modal-title" class="text-2xl font-semibold text-gray-800 mb-4 text-center">Scan Code</h2>
+
+            <div id="reader-container" class="mb-4">
+                 <div id="reader" style="width: 100%;"></div>
+            </div>
+
+            <p id="scanner-status" class="mt-4 text-sm text-center text-gray-600">
+                Point your camera at the book's code.
+            </p>
+            <div id="scan-result-display" class="mt-4 p-3 rounded-lg hidden text-sm font-medium text-center"></div>
+        </div>
+    </div>
+    
+    <!-- Inventory Edit Modal Placeholder -->
+    <div id="edit-modal-placeholder"></div>
+
+
+    <!-- START OF FIREBASE CONFIGURATION BLOCK -->
+    <script>
+        // *** REPLACE THIS ENTIRE BLOCK WITH YOUR VALID FIREBASE CONFIGURATION ***
+        // NOTE: The example below is a placeholder and will likely cause the "api-key-not-valid" error.
+        const __firebase_config = JSON.stringify({
+            // Your API key goes here.
+            apiKey: "AIzaSyCWk5vWlRrSnPMWYUPJYVmcnIJES1BgAJs",
+            authDomain: "textbook-management-syst-9ef99.firebaseapp.com",
+            projectId: "textbook-management-syst-9ef99",
+            storageBucket: "textbook-management-syst-9ef99.firebasestorage.app",
+            messagingSenderId: "131997602558",
+            appId: "1:131997602558:web:a1cf4e069d929d4f678baf"
+        });
+
+        // The __app_id variable MUST match the appId above for Firestore collection pathing.
+        const __app_id = "1:131997602558:web:a1cf4e069d929d4f678baf"; 
+
+        const __initial_auth_token = null;
+    </script>
+    <!-- END OF FIREBASE CONFIGURATION BLOCK -->
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, addDoc, deleteDoc, onSnapshot, collection, query, setLogLevel, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global Firebase references and state
+        let app;
+        let db;
+        let auth;
+        let userId = null;
+        let isAuthReady = false;
+        let currentIssues = []; 
+        let masterInventory = []; 
+        let html5QrcodeScanner = null; 
+
+        // Scanner state
+        let scannerMode = 'return'; 
+        let targetInputId = null; 
+
+        const COLLECTION_NAME = 'active_issues';
+        const MASTER_COLLECTION_NAME = 'master_textbooks'; 
+
+        // UI Element References
+        const statusMessageEl = document.getElementById('status-message');
+        const loadingSpinnerEl = document.getElementById('loading-spinner');
+        const errorTextEl = document.getElementById('error-text');
+        const userInfoEl = document.getElementById('user-info');
+        
+        // Register View Elements
+        const issueFormSection = document.getElementById('issue-form-section');
+        const registerSection = document.getElementById('register-section');
+        const registerList = document.getElementById('register-list');
+        const emptyState = document.getElementById('empty-state');
+        const issueForm = document.getElementById('issue-form');
+        const formMessage = document.getElementById('form-message');
+        const isbnInput = document.getElementById('isbn');
+        const masterBookSelect = document.getElementById('masterBookSelect'); 
+
+        
+        // Inventory View Elements
+        const showRegisterBtn = document.getElementById('show-register-btn');
+        const showInventoryBtn = document.getElementById('show-inventory-btn');
+        const registerPage = document.getElementById('register-page');
+        const inventoryPage = document.getElementById('inventory-page');
+        const inventoryForm = document.getElementById('inventory-form');
+        const inventoryList = document.getElementById('inventory-list');
+        const inventoryEmptyState = document.getElementById('inventory-empty-state');
+        const inventoryCountEl = document.getElementById('inventory-count');
+        const inventoryFormMessage = document.getElementById('inventory-form-message');
+        const editModalPlaceholder = document.getElementById('edit-modal-placeholder'); // NEW: Modal placeholder
+
+        // QR Generator View Elements
+        const showQrGeneratorBtn = document.getElementById('show-qr-generator-btn');
+        const qrGeneratorPage = document.getElementById('qr-generator-page');
+        const qrBatchForm = document.getElementById('qr-batch-form');
+        const batchBookSelect = document.getElementById('batchBookSelect');
+        const batchCountInput = document.getElementById('batchCount');
+        const qrOutputSection = document.getElementById('qr-output-section');
+        const qrBatchOutput = document.getElementById('qr-batch-output');
+        const printBatchBtn = document.getElementById('print-batch-btn');
+
+        // Scanner/Modal Elements
+        const scanReturnBtn = document.getElementById('scan-return-btn');
+        const scannerModal = document.getElementById('scanner-modal');
+        const closeScannerBtn = document.getElementById('close-scanner-btn');
+        const scannerStatusEl = document.getElementById('scanner-status');
+        const scannerModalTitle = document.getElementById('scanner-modal-title');
+        const scanResultDisplay = document.getElementById('scan-result-display');
+
+
+        // Initialize the scanner instance once the library is loaded
+        if (typeof Html5Qrcode !== 'undefined' && document.getElementById('reader')) {
+            html5QrcodeScanner = new Html5Qrcode("reader"); 
+        } else {
+            console.warn("html5-qrcode library or reader element not found/ready.");
+        }
+
+
+        // Set Firebase Log Level to Debug for easier development/debugging
+        setLogLevel('debug');
+
+        // --- Utility Functions ---
+
+        /**
+         * Generates a simple, robust UUID (e.g., "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx")
+         */
+        function generateUUID() {
+            if (typeof crypto.randomUUID === 'function') {
+                return crypto.randomUUID();
+            }
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+
+        // Utility to display messages
+        function displayStatus(message, isError = false) {
+            statusMessageEl.classList.remove('hidden');
+            loadingSpinnerEl.classList.add('hidden');
+            errorTextEl.classList.remove('hidden');
+            errorTextEl.textContent = message;
+
+            if (isError) {
+                statusMessageEl.classList.remove('bg-yellow-100', 'text-yellow-700');
+                statusMessageEl.classList.add('bg-red-100', 'text-red-700');
+            } else {
+                statusMessageEl.classList.remove('bg-red-100', 'text-red-700');
+                statusMessageEl.classList.add('bg-yellow-100', 'text-yellow-700');
+            }
+        }
+
+        function hideStatus() {
+             statusMessageEl.classList.add('hidden');
+        }
+
+        /**
+         * Switches the view between pages.
+         */
+        function switchView(view) {
+            const views = {
+                'register': registerPage,
+                'inventory': inventoryPage,
+                'qr-generator': qrGeneratorPage
+            };
+            
+            // Hide all pages
+            Object.values(views).forEach(page => page.classList.add('hidden'));
+            
+            // Show the selected page
+            views[view].classList.remove('hidden');
+            
+            // Toggle related section visibility
+            issueFormSection.classList.toggle('hidden', view !== 'register');
+            document.getElementById('return-scan-button-section').classList.toggle('hidden', view !== 'register');
+            registerSection.classList.toggle('hidden', view !== 'register');
+            inventoryForm.classList.toggle('hidden', view !== 'inventory');
+            
+            // Update button styles
+            [showRegisterBtn, showInventoryBtn, showQrGeneratorBtn].forEach(btn => {
+                btn.classList.remove('bg-blue-600', 'bg-gray-500', 'bg-indigo-500', 'hover:bg-blue-700', 'hover:bg-gray-600', 'hover:bg-indigo-600');
+            });
+
+            if (view === 'register') {
+                showRegisterBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                showInventoryBtn.classList.add('bg-gray-500', 'hover:bg-gray-600');
+                showQrGeneratorBtn.classList.add('bg-indigo-500', 'hover:bg-indigo-600');
+            } else if (view === 'inventory') {
+                showRegisterBtn.classList.add('bg-gray-500', 'hover:bg-gray-600');
+                showInventoryBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                showQrGeneratorBtn.classList.add('bg-indigo-500', 'hover:bg-indigo-600');
+            } else if (view === 'qr-generator') {
+                showRegisterBtn.classList.add('bg-gray-500', 'hover:bg-gray-600');
+                showInventoryBtn.classList.add('bg-gray-500', 'hover:bg-gray-600');
+                showQrGeneratorBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+            }
+        }
+
+        /**
+         * Initializes Firebase and attempts authentication.
+         */
+        async function initFirebase() {
+            displayStatus("Initializing Firebase and authenticating...");
+
+            try {
+                // Mandatory global variables check
+                if (typeof __firebase_config === 'undefined' || typeof __app_id === 'undefined') {
+                    throw new Error("Missing required Firebase configuration variables. Check the <script> block before the module.");
+                }
+
+                const firebaseConfig = JSON.parse(__firebase_config);
+                
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                // Authentication Setup
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        userInfoEl.textContent = `Logged in User ID (for collaboration): ${userId}`;
+                        isAuthReady = true;
+                        hideStatus();
+                        
+                        setupRealtimeListener(); 
+                        setupMasterInventoryListener(); 
+                        switchView('register'); 
+                    } else {
+                        try {
+                            if (!__initial_auth_token) {
+                                await signInAnonymously(auth);
+                            }
+                        } catch (error) {
+                            userId = crypto.randomUUID();
+                            displayStatus(`Authentication failed. Data persistence might be limited. Error: ${error.message}`, true);
+                            isAuthReady = true;
+                        }
+                    }
+                });
+
+                if (!__initial_auth_token) {
+                    await signInAnonymously(auth);
+                }
+                
+                isbnInput.value = ''; 
+
+            } catch (error) {
+                console.error("Firebase Initialization Error:", error);
+                displayStatus(`Critical Error: Could not initialize app. ${error.message}`, true);
+            }
+        }
+
+        /**
+         * Returns the Firestore collection reference for the active issues.
+         */
+        function getCollectionRef() {
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const collectionPath = `artifacts/${appId}/public/data/${COLLECTION_NAME}`;
+            return collection(db, collectionPath);
+        }
+
+        /**
+         * Returns the Firestore collection reference for the master inventory.
+         */
+        function getMasterCollectionRef() { 
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const collectionPath = `artifacts/${appId}/public/data/${MASTER_COLLECTION_NAME}`;
+            return collection(db, collectionPath);
+        }
+
+        // --- Utility Functions ---
+
+        /**
+         * Creates and displays a temporary message notification.
+         */
+        function showTemporaryMessage(message, isError = false) {
+            const tempDiv = document.createElement('div');
+            tempDiv.textContent = message;
+            tempDiv.className = `fixed top-4 right-4 p-3 rounded-lg shadow-xl text-white z-50 transition-all duration-500 ${isError ? 'bg-red-600' : 'bg-green-600'} transform translate-y-0 opacity-100`;
+            document.body.appendChild(tempDiv);
+
+            setTimeout(() => {
+                tempDiv.classList.add('-translate-y-full', 'opacity-0');
+                tempDiv.classList.remove('translate-y-0', 'opacity-100');
+                tempDiv.addEventListener('transitionend', () => tempDiv.remove());
+            }, 3000);
+        }
+
+        // --- BARCODE GENERATION LOGIC ---
+
+        /**
+         * Creates the Barcodes (Code 128) and displays them for printing.
+         */
+        function generateBarcodes(event) {
+            event.preventDefault();
+
+            const selectedOption = batchBookSelect.options[batchBookSelect.selectedIndex];
+            const masterTitle = selectedOption.getAttribute('data-title');
+            const batchCount = parseInt(batchCountInput.value.trim(), 10);
+            
+            if (!masterTitle || isNaN(batchCount) || batchCount < 1) {
+                showTemporaryMessage('Please select a book and enter a valid count.', true);
+                return;
+            }
+
+            qrBatchOutput.innerHTML = ''; // Clear previous codes
+            qrOutputSection.classList.remove('hidden');
+
+            const timestamp = Date.now();
+            
+            for (let i = 0; i < batchCount; i++) {
+                // Generate a unique ID (must be alphanumeric/simple characters for Code 128)
+                // We use a simplified UUID for reliable scanning
+                const uniqueId = generateUUID().replace(/-/g, '').substring(0, 16).toUpperCase(); 
+                
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'barcode-item-print';
+                itemDiv.innerHTML = `
+                    <p class="text-xs font-semibold mb-1 truncate">${masterTitle}</p>
+                    <svg id="barcode-${i}" class="barcode-svg"></svg>
+                    <span class="barcode-id-text">${uniqueId}</span>
+                `;
+
+                qrBatchOutput.appendChild(itemDiv);
+
+                // Use JsBarcode to draw the barcode
+                JsBarcode(`#barcode-${i}`, uniqueId, {
+                    format: "CODE128", // Highly used standard
+                    displayValue: false, // Don't display the value under the barcode itself
+                    width: 2, 
+                    height: 80,
+                    margin: 5
+                });
+            }
+
+            showTemporaryMessage(`Generated ${batchCount} unique barcodes for ${masterTitle}.`, false);
+        }
+
+        /**
+         * Handles printing the generated batch codes.
+         */
+        function printQrBatch() {
+            const printWindow = window.open('', '_blank');
+            if (!printWindow) {
+                // Using a temporary message instead of alert()
+                showTemporaryMessage('Please allow pop-ups to print the barcodes.', true);
+                return;
+            }
+
+            const masterTitle = batchBookSelect.options[batchBookSelect.selectedIndex].getAttribute('data-title') || 'Textbooks';
+            
+            // Note: We need to serialize the SVG content before writing it to the new window
+            const barcodesHtml = Array.from(qrBatchOutput.children).map(item => item.outerHTML).join('');
+
+
+            const printContent = `
+                <html>
+                <head>
+                    <title>Print Barcodes - ${masterTitle}</title>
+                    <style>
+                        @media print {
+                            @page { size: auto; margin: 5mm; } 
+                            body { margin: 0; padding: 10px; font-family: sans-serif; }
+                            .qr-container { display: flex; flex-wrap: wrap; justify-content: start; }
+                            .barcode-item-print {
+                                display: block;
+                                text-align: center;
+                                margin: 5px;
+                                padding: 5px;
+                                border: 1px solid #ddd;
+                                width: 90mm; /* Sized for standard labels */
+                                height: 35mm; 
+                                box-sizing: border-box;
+                                break-inside: avoid;
+                                page-break-inside: avoid;
+                            }
+                            .barcode-item-print svg {
+                                display: block;
+                                max-width: 100%;
+                                height: 70%;
+                                margin: 0 auto 0 auto;
+                            }
+                            .barcode-item-print p { font-size: 10px; font-weight: bold; line-height: 1.2; margin: 0; }
+                            .barcode-id-text { font-size: 10px; font-family: monospace; display: block; margin-top: 2px; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <h1 style="text-align: center; font-size: 16px; margin-bottom: 15px;">Barcodes for: ${masterTitle}</h1>
+                    <div class="qr-container">${barcodesHtml}</div>
+                </body>
+                </html>
+            `;
+
+            printWindow.document.write(printContent);
+            printWindow.document.close();
+            printWindow.focus();
+            printWindow.print();
+            printWindow.close(); // Close after printing (optional, depends on browser settings)
+        }
+
+
+        // --- ISSUE REGISTER LOGIC ---
+
+        /**
+         * Handles the form submission to issue a new book.
+         */
+        async function issueBook(event) {
+            event.preventDefault();
+
+            if (!isAuthReady || !userId) {
+                formMessage.textContent = 'System is not ready. Please wait for initialization.';
+                formMessage.classList.remove('hidden');
+                formMessage.className = 'mt-3 text-sm text-red-500';
+                return;
+            }
+
+            formMessage.classList.add('hidden');
+            const learnerName = document.getElementById('learnerName').value.trim();
+            const selectedOption = masterBookSelect.options[masterBookSelect.selectedIndex];
+            
+            // Get the book title from the selected option's data-title attribute
+            const bookTitle = selectedOption.getAttribute('data-title'); 
+            
+            // Get the unique ISBN/ID from the ISBN scan input
+            const isbn = isbnInput.value.trim(); 
+            
+            if (!learnerName || !bookTitle || !isbn) {
+                formMessage.textContent = 'Learner Name, Book Title selection, and Unique Barcode ID are required.';
+                formMessage.className = 'mt-3 text-sm text-red-500';
+                formMessage.classList.remove('hidden');
+                return;
+            }
+
+            const existingIssue = currentIssues.find(issue => issue.isbn === isbn);
+            if (existingIssue) {
+                showTemporaryMessage(`Error: Barcode ID ${isbn} is already active! Please return the book first.`, true);
+                return;
+            }
+            
+            const newIssue = {
+                learnerName: learnerName,
+                bookTitle: bookTitle,
+                isbn: isbn, 
+                issueDate: Date.now(),
+                issuedBy: userId
+            };
+
+            try {
+                await addDoc(getCollectionRef(), newIssue);
+                
+                // Instead of a modal, show a temporary success message
+                issueForm.reset();
+                isbnInput.value = ''; 
+                showTemporaryMessage(`Book "${bookTitle}" issued to ${learnerName} successfully!`, false);
+
+            } catch (e) {
+                console.error("Error adding document: ", e);
+                formMessage.textContent = `Error recording issue: ${e.message}`;
+                formMessage.className = 'mt-3 text-sm text-red-500';
+                formMessage.classList.remove('hidden');
+            }
+        }
+        
+        /**
+         * Creates a custom confirmation modal.
+         */
+        function createConfirmationModal(title, message, onConfirm) {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 p-4';
+            modal.innerHTML = `
+                <div class="bg-white rounded-xl p-6 w-full max-w-sm shadow-2xl">
+                    <h3 class="text-xl font-bold mb-4 text-gray-800">${title}</h3>
+                    <p class="text-gray-600 mb-6">${message}</p>
+                    <div class="flex justify-end space-x-3">
+                        <button id="cancel-btn" class="py-2 px-4 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition duration-150">
+                            Cancel
+                        </button>
+                        <button id="confirm-btn" class="py-2 px-4 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold transition duration-150">
+                            Confirm Return
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            const confirmBtn = modal.querySelector('#confirm-btn');
+            const cancelBtn = modal.querySelector('#cancel-btn');
+
+            const removeModal = () => modal.remove();
+
+            confirmBtn.onclick = () => {
+                onConfirm();
+                removeModal(); 
+            };
+            cancelBtn.onclick = removeModal;
+
+            return modal;
+        }
+
+        /**
+         * Core function to delete the document from Firestore.
+         */
+        async function deleteIssue(docId) {
+            try {
+                const docRef = doc(getCollectionRef(), docId);
+                await deleteDoc(docRef);
+                return true;
+            } catch (e) {
+                console.error("Error deleting document: ", e);
+                showTemporaryMessage(`Failed to record return: ${e.message}`, true);
+                return false;
+            }
+        }
+
+        /**
+         * Initiates the return process by showing a confirmation modal.
+         */
+        function initiateReturnConfirmation(issueRecord) {
+            document.querySelector('.fixed.inset-0.bg-gray-600.bg-opacity-75')?.remove();
+            
+            const message = `Do you want to confirm the return of "${issueRecord.bookTitle}" (Code: ${issueRecord.isbn}) from ${issueRecord.learnerName}?`;
+
+            const onConfirm = async () => {
+                if (await deleteIssue(issueRecord.id)) {
+                    showTemporaryMessage(`Return confirmed for ${issueRecord.bookTitle}.`, false);
+                }
+            };
+
+            const modal = createConfirmationModal("Confirm Book Return", message, onConfirm);
+            document.body.appendChild(modal);
+        }
+
+        /**
+         * Renders the list of currently issued books from the snapshot data.
+         */
+        function renderRegister(issues) {
+            registerList.innerHTML = '';
+            currentIssues = issues; 
+
+            if (issues.length === 0) {
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+
+            issues.forEach(issue => {
+                const date = new Date(issue.issueDate).toLocaleDateString();
+                const time = new Date(issue.issueDate).toLocaleTimeString();
+
+                const item = document.createElement('div');
+                item.className = 'flex flex-col md:flex-row justify-between items-start md:items-center p-4 bg-gray-50 rounded-lg shadow-sm hover:bg-gray-100 transition duration-150 border-l-4 border-blue-500';
+                item.innerHTML = `
+                    <div class="flex-grow min-w-0 mb-3 md:mb-0">
+                        <p class="text-lg font-semibold text-gray-900 truncate">${issue.bookTitle}</p>
+                        <p class="text-gray-700">Unique Barcode ID: <span class="font-mono text-sm bg-gray-200 p-1 rounded">${issue.isbn}</span></p>
+                        <p class="text-gray-700">Issued to: <span class="font-medium">${issue.learnerName}</span></p>
+                        <p class="text-sm text-gray-500">
+                            Issued on: ${date} at ${time}
+                            <span class="md:inline-block hidden">|</span>
+                            <span class="block md:inline-block">By: ${issue.issuedBy.substring(0, 8)}...</span>
+                        </p>
+                    </div>
+                    <div class="flex-shrink-0">
+                        <button data-doc-id="${issue.id}" class="manual-return-btn py-2 px-4 bg-green-500 hover:bg-green-600 text-white font-medium rounded-lg shadow transition duration-150 ease-in-out text-sm">
+                            Mark as Returned (Manual)
+                        </button>
+                    </div>
+                `;
+                registerList.appendChild(item);
+            });
+
+            registerList.querySelectorAll('.manual-return-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const docId = e.currentTarget.dataset.docId;
+                    const issueRecord = currentIssues.find(issue => issue.id === docId); 
+                    if (issueRecord) {
+                        initiateReturnConfirmation(issueRecord);
+                    }
+                });
+            });
+        }
+
+        /**
+         * Sets up the real-time listener for the issued books collection.
+         */
+        function setupRealtimeListener() {
+            if (!isAuthReady || !db) {
+                setTimeout(setupRealtimeListener, 500);
+                return;
+            }
+
+            const issuesQuery = query(getCollectionRef());
+
+            onSnapshot(issuesQuery, (snapshot) => {
+                const issues = [];
+                snapshot.forEach((doc) => {
+                    issues.push({ id: doc.id, ...doc.data() });
+                });
+
+                issues.sort((a, b) => b.issueDate - a.issueDate);
+                renderRegister(issues);
+            }, (error) => {
+                console.error("Firestore Snapshot Error:", error);
+                displayStatus(`Failed to load real-time register: ${error.message}`, true);
+            });
+        }
+
+
+        // --- INVENTORY MANAGEMENT LOGIC ---
+
+        /**
+         * Populates the book selection dropdowns (Issue Form and Batch Generator).
+         */
+        function populateBookSelect(books) {
+            const defaultOption = '<option value="" disabled selected>-- Select a book title --</option>';
+            const emptyOption = '<option value="" disabled selected>No titles in Master Inventory</option>';
+            
+            masterBookSelect.innerHTML = defaultOption;
+            batchBookSelect.innerHTML = defaultOption;
+
+            if (books.length === 0) {
+                 masterBookSelect.innerHTML = emptyOption;
+                 batchBookSelect.innerHTML = emptyOption;
+                 return;
+            }
+
+            books.forEach(book => {
+                const optionHtml = `<option value="${book.isbn}" data-title="${book.title}">
+                    ${book.title} (${book.subject}) - Stock: ${book.stockCount}
+                </option>`;
+                
+                masterBookSelect.insertAdjacentHTML('beforeend', optionHtml);
+                batchBookSelect.insertAdjacentHTML('beforeend', optionHtml);
+            });
+        }
+
+        /**
+         * Creates and displays the editing modal for an inventory item.
+         */
+        function createEditModal(book) {
+            // Remove any existing modals
+            editModalPlaceholder.innerHTML = ''; 
+
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 p-4';
+            modal.innerHTML = `
+                <div class="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl relative">
+                    <h3 class="text-xl font-bold mb-4 text-gray-800">Edit Inventory Item</h3>
+                    <p class="text-sm text-gray-500 mb-4">Master ISBN: <span class="font-mono">${book.isbn}</span></p>
+
+                    <form id="edit-inventory-form" class="space-y-4">
+                        <div>
+                            <label for="editTitle" class="block text-sm font-medium text-gray-700">Book Title</label>
+                            <input type="text" id="editTitle" required value="${book.title}" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border">
+                        </div>
+                        <div>
+                            <label for="editSubject" class="block text-sm font-medium text-gray-700">Subject</label>
+                            <input type="text" id="editSubject" required value="${book.subject}" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border">
+                        </div>
+                        <div>
+                            <label for="editStockCount" class="block text-sm font-medium text-gray-700">Total Stock Count</label>
+                            <input type="number" id="editStockCount" required min="0" value="${book.stockCount}" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border">
+                        </div>
+                        
+                        <div class="flex justify-end space-x-3 pt-4">
+                            <button type="button" id="edit-cancel-btn" class="py-2 px-4 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition duration-150">
+                                Cancel
+                            </button>
+                            <button type="submit" class="py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold transition duration-150">
+                                Save Changes
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            
+            editModalPlaceholder.appendChild(modal);
+
+            // Close logic
+            modal.querySelector('#edit-cancel-btn').addEventListener('click', () => {
+                modal.remove();
+            });
+
+            // Save logic
+            modal.querySelector('#edit-inventory-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                const updatedBook = {
+                    title: modal.querySelector('#editTitle').value.trim(),
+                    subject: modal.querySelector('#editSubject').value.trim(),
+                    stockCount: parseInt(modal.querySelector('#editStockCount').value.trim(), 10),
+                };
+
+                // The master ISBN/key remains the same (book.isbn)
+                await updateInventoryItem(book.id, updatedBook);
+                modal.remove();
+            });
+        }
+        
+        /**
+         * Handles the Firestore update operation for an inventory item.
+         */
+        async function updateInventoryItem(docId, data) {
+             if (!isAuthReady || !db) {
+                showTemporaryMessage('System is not ready. Cannot save changes.', true);
+                return;
+            }
+
+            try {
+                const docRef = doc(getMasterCollectionRef(), docId);
+                await updateDoc(docRef, data);
+                showTemporaryMessage('Inventory item updated successfully!', false);
+            } catch (e) {
+                console.error("Error updating inventory document: ", e);
+                showTemporaryMessage(`Failed to update inventory: ${e.message}`, true);
+            }
+        }
+
+        /**
+         * Renders the Master Textbook Inventory list. (Updated to include Edit button)
+         */
+        function renderInventory(books) {
+            inventoryList.innerHTML = '';
+            masterInventory = books;
+            inventoryCountEl.textContent = books.length;
+
+            if (books.length === 0) {
+                inventoryEmptyState.classList.remove('hidden');
+                return;
+            }
+
+            inventoryEmptyState.classList.add('hidden');
+
+            books.forEach(book => {
+                const item = document.createElement('div');
+                item.className = 'flex flex-col md:flex-row justify-between items-start md:items-center p-4 bg-gray-50 rounded-lg shadow-sm hover:bg-gray-100 transition duration-150 border-l-4 border-green-500';
+                item.innerHTML = `
+                    <div class="flex-grow min-w-0 mb-3 md:mb-0">
+                        <p class="text-lg font-semibold text-gray-900 truncate">${book.title}</p>
+                        <p class="text-gray-700">Subject: <span class="font-medium">${book.subject}</span></p>
+                        <p class="text-sm text-gray-500">Master ISBN: <span class="font-mono bg-gray-200 p-1 rounded">${book.isbn}</span> | Stock: <span class="font-bold">${book.stockCount}</span></p>
+                    </div>
+                    <div class="flex-shrink-0 flex space-x-2">
+                        <button data-doc-id="${book.id}" class="edit-inventory-btn py-2 px-4 bg-yellow-500 hover:bg-yellow-600 text-white font-medium rounded-lg shadow transition duration-150 ease-in-out text-sm">
+                            Edit
+                        </button>
+                        <button data-doc-id="${book.id}" class="delete-inventory-btn py-2 px-4 bg-red-500 hover:bg-red-600 text-white font-medium rounded-lg shadow transition duration-150 ease-in-out text-sm">
+                            Delete Title
+                        </button>
+                    </div>
+                `;
+                inventoryList.appendChild(item);
+            });
+
+            // Attach event listeners for deleting inventory items
+            inventoryList.querySelectorAll('.delete-inventory-btn').forEach(button => {
+                button.addEventListener('click', async (e) => {
+                    const docId = e.currentTarget.dataset.docId;
+                    try {
+                        await deleteDoc(doc(getMasterCollectionRef(), docId));
+                        showTemporaryMessage('Book deleted from master inventory.', false);
+                    } catch (e) {
+                         showTemporaryMessage(`Failed to delete book: ${e.message}`, true);
+                    }
+                });
+            });
+            
+            // NEW: Attach event listeners for editing inventory items
+            inventoryList.querySelectorAll('.edit-inventory-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const docId = e.currentTarget.dataset.docId;
+                    const bookToEdit = masterInventory.find(book => book.id === docId);
+                    if (bookToEdit) {
+                        createEditModal(bookToEdit);
+                    }
+                });
+            });
+        }
+
+
+        /**
+         * Sets up the real-time listener for the master inventory collection.
+         */
+        function setupMasterInventoryListener() { 
+             if (!isAuthReady || !db) {
+                setTimeout(setupMasterInventoryListener, 500);
+                return;
+            }
+
+            const inventoryQuery = query(getMasterCollectionRef());
+
+            onSnapshot(inventoryQuery, (snapshot) => {
+                const books = [];
+                snapshot.forEach((doc) => {
+                    books.push({ id: doc.id, ...doc.data() });
+                });
+
+                books.sort((a, b) => a.title.localeCompare(b.title));
+
+                renderInventory(books);
+                populateBookSelect(books); 
+            }, (error) => {
+                console.error("Firestore Inventory Snapshot Error:", error);
+                displayStatus(`Failed to load master inventory: ${error.message}`, true); 
+            });
+        }
+
+        /**
+         * Handles the form submission to add a new book to the master inventory.
+         */
+        async function addMasterBook(event) { 
+            event.preventDefault();
+
+            inventoryFormMessage.classList.add('hidden');
+            
+            const title = document.getElementById('invBookTitle').value.trim();
+            const subject = document.getElementById('invSubject').value.trim();
+            const isbn = document.getElementById('invISBN').value.trim();
+            const stockCount = parseInt(document.getElementById('invStockCount').value.trim(), 10);
+
+            if (!title || !subject || !isbn || isNaN(stockCount) || stockCount < 1) {
+                inventoryFormMessage.textContent = 'All fields must be filled correctly.';
+                inventoryFormMessage.className = 'mt-3 text-sm text-red-500';
+                inventoryFormMessage.classList.remove('hidden');
+                return;
+            }
+            
+             if (masterInventory.some(book => book.isbn === isbn)) {
+                inventoryFormMessage.textContent = 'Error: A book with this ISBN already exists in the inventory.';
+                inventoryFormMessage.className = 'mt-3 text-sm text-red-500';
+                inventoryFormMessage.classList.remove('hidden');
+                return;
+            }
+
+            const newBook = {
+                title: title,
+                subject: subject,
+                isbn: isbn,
+                stockCount: stockCount,
+                addedBy: userId,
+                addedDate: Date.now()
+            };
+
+            try {
+                await addDoc(getMasterCollectionRef(), newBook);
+                
+                inventoryForm.reset();
+                showTemporaryMessage('Book added to Master Inventory!', false);
+
+            } catch (e) {
+                console.error("Error adding inventory document: ", e);
+                inventoryFormMessage.textContent = `Error recording book: ${e.message}`;
+                inventoryFormMessage.className = 'mt-3 text-sm text-red-500';
+                inventoryFormMessage.classList.remove('hidden');
+            }
+        }
+
+
+        // --- SCANNER FUNCTIONS ---
+        
+        async function stopScanner() {
+            if (html5QrcodeScanner && html5QrcodeScanner.isScanning) {
+                try {
+                    await html5QrcodeScanner.stop();
+                } catch (err) {
+                    console.error("Failed to stop scanner: ", err);
+                }
+            }
+            
+            scannerModal.classList.add('hidden');
+            scanResultDisplay.classList.add('hidden');
+            scannerStatusEl.textContent = 'Point your camera at the book\'s code.';
+            document.querySelector('.fixed.inset-0.bg-gray-600.bg-opacity-75')?.remove();
+            
+            // Reset mode and target
+            scannerMode = 'return';
+            targetInputId = null;
+        }
+
+        /**
+         * Handler for when a barcode is scanned to populate an input field.
+         */
+        function onCaptureSuccess(decodedText) {
+             if (targetInputId) {
+                const targetInput = document.getElementById(targetInputId);
+                if (targetInput) {
+                    targetInput.value = decodedText.trim();
+                    targetInput.focus(); 
+                    showTemporaryMessage(`Code captured successfully: ${decodedText.substring(0, 30)}...`, false);
+                }
+            }
+            stopScanner();
+        }
+
+        /**
+         * Handler for when a unique ID is scanned to process a return.
+         */
+        async function onReturnSuccess(decodedText) {
+            await stopScanner();
+
+            const issueRecord = currentIssues.find(issue => issue.isbn === decodedText);
+
+            if (issueRecord) {
+                initiateReturnConfirmation(issueRecord);
+            } else {
+                 showTemporaryMessage(`Error: Book code ${decodedText} not found in active issues.`, true);
+            }
+        }
+        
+        /**
+         * Unified function to start scanner in different modes.
+         */
+        async function startScanner(mode, inputId = null) {
+            scannerMode = mode;
+            targetInputId = inputId;
+            
+            scannerModal.classList.remove('hidden');
+            const successHandler = (scannerMode === 'capture-isbn') ? onCaptureSuccess : onReturnSuccess;
+            
+            if (scannerMode === 'capture-isbn') {
+                scannerModalTitle.textContent = "Scan ISBN/Barcode";
+                scannerStatusEl.textContent = 'Point your camera at the ISBN barcode on the book.';
+            } else {
+                scannerModalTitle.textContent = "Scan Book for Return (Unique Barcode ID)";
+                scannerStatusEl.textContent = 'Point your camera at the unique barcode sticker.';
+            }
+
+
+            const config = { 
+                fps: 10, 
+                qrbox: { width: 250, height: 250 }, 
+                disableFlip: false 
+            };
+            
+            try {
+                 // Note: html5-qrcode works for both QR and linear barcodes
+                 await html5QrcodeScanner.start({ facingMode: "environment" }, config, successHandler);
+            } catch (err) {
+                 scannerStatusEl.textContent = 'Error starting camera. Check permissions.';
+                 console.error("Camera Start Error:", err);
+            }
+        }
+
+
+        // --- Event Listeners ---
+        issueForm.addEventListener('submit', issueBook);
+        closeScannerBtn.addEventListener('click', stopScanner);
+
+        // Navigation Listeners
+        showRegisterBtn.addEventListener('click', () => switchView('register'));
+        showInventoryBtn.addEventListener('click', () => switchView('inventory'));
+        // Switched to generateBarcodes
+        showQrGeneratorBtn.addEventListener('click', () => switchView('qr-generator'));
+        
+        // Issue Register Listeners
+        scanReturnBtn.addEventListener('click', () => startScanner('return')); 
+        document.getElementById('scan-issue-btn').addEventListener('click', () => {
+             startScanner('capture-isbn', 'isbn'); 
+        });
+
+        // Inventory Management Listeners
+        inventoryForm.addEventListener('submit', addMasterBook);
+        document.getElementById('scan-inventory-isbn-btn').addEventListener('click', () => {
+             startScanner('capture-isbn', 'invISBN'); 
+        });
+
+        // Barcode Generator Listeners
+        qrBatchForm.addEventListener('submit', generateBarcodes);
+        printBatchBtn.addEventListener('click', printQrBatch);
+
+
+        // --- Start Application ---
+        document.addEventListener('DOMContentLoaded', initFirebase);
+
+    </script>
+</body>
+</html>
