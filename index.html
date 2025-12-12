@@ -307,6 +307,7 @@
         let currentIssues = []; 
         let masterInventory = []; 
         let html5QrcodeScanner = null; 
+        let selectedCameraId = null; // NEW: Store the ID of the selected camera
 
         // Scanner state
         let scannerMode = 'return'; 
@@ -470,6 +471,11 @@
                 db = getFirestore(app);
                 auth = getAuth(app);
                 
+                // NEW: Setup Camera Device before authentication completes
+                if (html5QrcodeScanner) {
+                    await setupCameraDevice();
+                }
+
                 // Authentication Setup
                 onAuthStateChanged(auth, async (user) => {
                     if (user) {
@@ -505,6 +511,31 @@
                 displayStatus(`Critical Error: Could not initialize app. ${error.message}`, true);
             }
         }
+        
+        // NEW FUNCTION: Setup Camera Device
+        /**
+         * Selects the preferred camera device ID for robust scanning.
+         */
+        async function setupCameraDevice() {
+            try {
+                const devices = await Html5Qrcode.getCameras();
+                if (devices && devices.length) {
+                    // Try to find the 'environment' camera (rear camera on mobile)
+                    const environmentCam = devices.find(device => 
+                        device.label.toLowerCase().includes('back') || 
+                        device.label.toLowerCase().includes('environment')
+                    );
+                    
+                    selectedCameraId = environmentCam ? environmentCam.id : devices[0].id;
+                    console.log("Camera selected with ID:", selectedCameraId);
+                } else {
+                    console.warn("No camera devices found.");
+                }
+            } catch (err) {
+                 console.error("Error listing cameras. Camera functionality may be disabled/broken.", err);
+            }
+        }
+
 
         /**
          * Returns the Firestore collection reference for the active issues.
@@ -1179,6 +1210,12 @@
             scannerMode = mode;
             targetInputId = inputId;
             
+            if (!selectedCameraId) { // Check if a camera was found
+                showTemporaryMessage("Error: No camera device was detected or initialized. Check permissions.", true);
+                scannerStatusEl.textContent = 'Error starting camera. No device found.';
+                return;
+            }
+
             scannerModal.classList.remove('hidden');
             const successHandler = (scannerMode === 'capture-isbn') ? onCaptureSuccess : onReturnSuccess;
             
@@ -1195,7 +1232,6 @@
                 fps: 10, 
                 qrbox: { width: 250, height: 250 }, 
                 disableFlip: false,
-                // FIX: Explicitly list supported formats for better reliability, especially for linear barcodes
                 formatsToSupport: [
                     "EAN_13", // Standard for ISBN-13
                     "CODE_128", // Used for generated unique book codes
@@ -1206,11 +1242,13 @@
             };
             
             try {
-                 // Note: html5-qrcode works for both QR and linear barcodes
-                 await html5QrcodeScanner.start({ facingMode: "environment" }, config, successHandler);
+                 // UPDATED: Use the selectedCameraId for explicit camera selection
+                 await html5QrcodeScanner.start(selectedCameraId, config, successHandler);
             } catch (err) {
                  scannerStatusEl.textContent = 'Error starting camera. Check permissions.';
                  console.error("Camera Start Error:", err);
+                 // Force stop and close modal on failure
+                 stopScanner();
             }
         }
 
