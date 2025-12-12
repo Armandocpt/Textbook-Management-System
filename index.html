@@ -96,17 +96,6 @@
                         <input type="text" id="learnerName" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
                     </div>
                     <div>
-                        <label for="learnerGrade" class="block text-sm font-medium text-gray-700">Learner Grade</label>
-                        <select id="learnerGrade" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border bg-white">
-                            <option value="" disabled selected>Select Grade</option>
-                            <option value="8">Grade 8</option>
-                            <option value="9">Grade 9</option>
-                            <option value="10">Grade 10</option>
-                            <option value="11">Grade 11</option>
-                            <option value="12">Grade 12</option>
-                        </select>
-                    </div>
-                    <div>
                         <label for="masterBookSelect" class="block text-sm font-medium text-gray-700">Select Textbook Title</label>
                         <select id="masterBookSelect" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border bg-white">
                             <option value="" disabled selected>Loading Master Inventory...</option>
@@ -166,10 +155,6 @@
                     <div>
                         <label for="invBookTitle" class="block text-sm font-medium text-gray-700">Book Title</label>
                         <input type="text" id="invBookTitle" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
-                    </div>
-                    <div>
-                        <label for="invGrade" class="block text-sm font-medium text-gray-700">Target Grade(s)</label>
-                        <input type="text" id="invGrade" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" placeholder="e.g., 9 or 10-12">
                     </div>
                     <div class="flex space-x-4">
                         <div class="flex-1">
@@ -268,14 +253,6 @@
             <p id="scanner-status" class="mt-4 text-sm text-center text-gray-600">
                 Point your camera at the book's code.
             </p>
-            
-            <div class="mt-4" id="camera-select-container">
-                <label for="camera-select" class="block text-sm font-medium text-gray-700 mb-1">Select Camera (If scan fails)</label>
-                <select id="camera-select" class="block w-full rounded-lg border-gray-300 shadow-sm p-2 border bg-white text-sm">
-                    <option value="" disabled selected>Loading cameras...</option>
-                </select>
-                <p id="camera-status-message" class="text-xs mt-1 text-red-500 hidden"></p>
-            </div>
             <div id="scan-result-display" class="mt-4 p-3 rounded-lg hidden text-sm font-medium text-center"></div>
         </div>
     </div>
@@ -315,7 +292,6 @@
         let currentIssues = []; 
         let masterInventory = []; 
         let html5QrcodeScanner = null; 
-        let selectedCameraId = null; 
 
         // Scanner state
         let scannerMode = 'return'; 
@@ -339,7 +315,6 @@
         const formMessage = document.getElementById('form-message');
         const isbnInput = document.getElementById('isbn');
         const masterBookSelect = document.getElementById('masterBookSelect'); 
-        const learnerGradeSelect = document.getElementById('learnerGrade'); 
 
         
         // Inventory View Elements
@@ -352,7 +327,7 @@
         const inventoryEmptyState = document.getElementById('inventory-empty-state');
         const inventoryCountEl = document.getElementById('inventory-count');
         const inventoryFormMessage = document.getElementById('inventory-form-message');
-        const editModalPlaceholder = document.getElementById('edit-modal-placeholder'); 
+        const editModalPlaceholder = document.getElementById('edit-modal-placeholder'); // NEW: Modal placeholder
 
         // QR Generator View Elements
         const showQrGeneratorBtn = document.getElementById('show-qr-generator-btn');
@@ -371,8 +346,6 @@
         const scannerStatusEl = document.getElementById('scanner-status');
         const scannerModalTitle = document.getElementById('scanner-modal-title');
         const scanResultDisplay = document.getElementById('scan-result-display');
-        const cameraSelect = document.getElementById('camera-select'); // NEW
-        const cameraStatusMessageEl = document.getElementById('camera-status-message'); // NEW
 
 
         // Initialize the scanner instance once the library is loaded
@@ -481,11 +454,6 @@
                 db = getFirestore(app);
                 auth = getAuth(app);
                 
-                // Setup Camera Device before authentication completes
-                if (html5QrcodeScanner) {
-                    await setupCameraDevice();
-                }
-
                 // Authentication Setup
                 onAuthStateChanged(auth, async (user) => {
                     if (user) {
@@ -521,52 +489,6 @@
                 displayStatus(`Critical Error: Could not initialize app. ${error.message}`, true);
             }
         }
-        
-        // UPDATED FUNCTION: Setup Camera Device (now populates dropdown)
-        /**
-         * Selects the preferred camera device ID and populates the camera selection dropdown.
-         */
-        async function setupCameraDevice() {
-            cameraSelect.innerHTML = '<option value="" disabled selected>Loading cameras...</option>';
-            try {
-                const devices = await Html5Qrcode.getCameras();
-                if (devices && devices.length) {
-                    cameraSelect.innerHTML = '<option value="" disabled selected>-- Auto Selected --</option>';
-                    // Populate the dropdown
-                    devices.forEach(device => {
-                        const option = document.createElement('option');
-                        option.value = device.id;
-                        option.textContent = device.label || `Camera ${device.id.substring(0, 8)}...`;
-                        cameraSelect.appendChild(option);
-                    });
-
-                    // Auto-selection logic (prefer 'environment' or first)
-                    const environmentCam = devices.find(device => 
-                        device.label.toLowerCase().includes('back') || 
-                        device.label.toLowerCase().includes('environment')
-                    );
-                    
-                    selectedCameraId = environmentCam ? environmentCam.id : devices[0].id;
-                    
-                    // Select the auto-selected camera in the dropdown
-                    cameraSelect.value = selectedCameraId;
-                    
-                    console.log("Camera selected with ID:", selectedCameraId);
-                    cameraStatusMessageEl.classList.add('hidden');
-                } else {
-                    cameraSelect.innerHTML = '<option value="" disabled selected>No cameras found!</option>';
-                    cameraStatusMessageEl.textContent = 'No camera devices found. Barcode scanning is disabled.';
-                    cameraStatusMessageEl.classList.remove('hidden');
-                    console.warn("No camera devices found.");
-                }
-            } catch (err) {
-                 cameraSelect.innerHTML = '<option value="" disabled selected>Camera Error</option>';
-                 cameraStatusMessageEl.textContent = `Error listing cameras. Check browser permissions. (${err.name})`;
-                 cameraStatusMessageEl.classList.remove('hidden');
-                 console.error("Error listing cameras. Camera functionality may be disabled/broken.", err);
-            }
-        }
-
 
         /**
          * Returns the Firestore collection reference for the active issues.
@@ -735,7 +657,6 @@
 
             formMessage.classList.add('hidden');
             const learnerName = document.getElementById('learnerName').value.trim();
-            const learnerGrade = learnerGradeSelect.value.trim(); 
             const selectedOption = masterBookSelect.options[masterBookSelect.selectedIndex];
             
             // Get the book title from the selected option's data-title attribute
@@ -744,8 +665,8 @@
             // Get the unique ISBN/ID from the ISBN scan input
             const isbn = isbnInput.value.trim(); 
             
-            if (!learnerName || !learnerGrade || !bookTitle || !isbn) { 
-                formMessage.textContent = 'Learner Name, Learner Grade, Book Title selection, and Unique Barcode ID are required.'; 
+            if (!learnerName || !bookTitle || !isbn) {
+                formMessage.textContent = 'Learner Name, Book Title selection, and Unique Barcode ID are required.';
                 formMessage.className = 'mt-3 text-sm text-red-500';
                 formMessage.classList.remove('hidden');
                 return;
@@ -759,7 +680,6 @@
             
             const newIssue = {
                 learnerName: learnerName,
-                learnerGrade: learnerGrade, 
                 bookTitle: bookTitle,
                 isbn: isbn, 
                 issueDate: Date.now(),
@@ -772,7 +692,7 @@
                 // Instead of a modal, show a temporary success message
                 issueForm.reset();
                 isbnInput.value = ''; 
-                showTemporaryMessage(`Book "${bookTitle}" issued to ${learnerName} (Grade ${learnerGrade}) successfully!`, false);
+                showTemporaryMessage(`Book "${bookTitle}" issued to ${learnerName} successfully!`, false);
 
             } catch (e) {
                 console.error("Error adding document: ", e);
@@ -838,7 +758,7 @@
         function initiateReturnConfirmation(issueRecord) {
             document.querySelector('.fixed.inset-0.bg-gray-600.bg-opacity-75')?.remove();
             
-            const message = `Do you want to confirm the return of "${issueRecord.bookTitle}" (Code: ${issueRecord.isbn}) from ${issueRecord.learnerName} (Grade ${issueRecord.learnerGrade})?`;
+            const message = `Do you want to confirm the return of "${issueRecord.bookTitle}" (Code: ${issueRecord.isbn}) from ${issueRecord.learnerName}?`;
 
             const onConfirm = async () => {
                 if (await deleteIssue(issueRecord.id)) {
@@ -874,7 +794,7 @@
                     <div class="flex-grow min-w-0 mb-3 md:mb-0">
                         <p class="text-lg font-semibold text-gray-900 truncate">${issue.bookTitle}</p>
                         <p class="text-gray-700">Unique Barcode ID: <span class="font-mono text-sm bg-gray-200 p-1 rounded">${issue.isbn}</span></p>
-                        <p class="text-gray-700">Issued to: <span class="font-medium">${issue.learnerName}</span> (Grade: <span class="font-medium">${issue.learnerGrade || 'N/A'}</span>)</p> 
+                        <p class="text-gray-700">Issued to: <span class="font-medium">${issue.learnerName}</span></p>
                         <p class="text-sm text-gray-500">
                             Issued on: ${date} at ${time}
                             <span class="md:inline-block hidden">|</span>
@@ -946,9 +866,8 @@
             }
 
             books.forEach(book => {
-                // UPDATED: Include Grade in dropdown text
                 const optionHtml = `<option value="${book.isbn}" data-title="${book.title}">
-                    ${book.title} (Grade: ${book.grade}) (${book.subject}) - Stock: ${book.stockCount}
+                    ${book.title} (${book.subject}) - Stock: ${book.stockCount}
                 </option>`;
                 
                 masterBookSelect.insertAdjacentHTML('beforeend', optionHtml);
@@ -978,10 +897,6 @@
                         <div>
                             <label for="editSubject" class="block text-sm font-medium text-gray-700">Subject</label>
                             <input type="text" id="editSubject" required value="${book.subject}" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border">
-                        </div>
-                        <div>
-                            <label for="editGrade" class="block text-sm font-medium text-gray-700">Target Grade(s)</label>
-                            <input type="text" id="editGrade" required value="${book.grade || ''}" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2 border">
                         </div>
                         <div>
                             <label for="editStockCount" class="block text-sm font-medium text-gray-700">Total Stock Count</label>
@@ -1014,7 +929,6 @@
                 const updatedBook = {
                     title: modal.querySelector('#editTitle').value.trim(),
                     subject: modal.querySelector('#editSubject').value.trim(),
-                    grade: modal.querySelector('#editGrade').value.trim(), 
                     stockCount: parseInt(modal.querySelector('#editStockCount').value.trim(), 10),
                 };
 
@@ -1044,7 +958,7 @@
         }
 
         /**
-         * Renders the Master Textbook Inventory list.
+         * Renders the Master Textbook Inventory list. (Updated to include Edit button)
          */
         function renderInventory(books) {
             inventoryList.innerHTML = '';
@@ -1064,7 +978,7 @@
                 item.innerHTML = `
                     <div class="flex-grow min-w-0 mb-3 md:mb-0">
                         <p class="text-lg font-semibold text-gray-900 truncate">${book.title}</p>
-                        <p class="text-gray-700">Subject: <span class="font-medium">${book.subject}</span> | Grade(s): <span class="font-medium">${book.grade || 'N/A'}</span></p> 
+                        <p class="text-gray-700">Subject: <span class="font-medium">${book.subject}</span></p>
                         <p class="text-sm text-gray-500">Master ISBN: <span class="font-mono bg-gray-200 p-1 rounded">${book.isbn}</span> | Stock: <span class="font-bold">${book.stockCount}</span></p>
                     </div>
                     <div class="flex-shrink-0 flex space-x-2">
@@ -1141,12 +1055,11 @@
             inventoryFormMessage.classList.add('hidden');
             
             const title = document.getElementById('invBookTitle').value.trim();
-            const grade = document.getElementById('invGrade').value.trim(); 
             const subject = document.getElementById('invSubject').value.trim();
             const isbn = document.getElementById('invISBN').value.trim();
             const stockCount = parseInt(document.getElementById('invStockCount').value.trim(), 10);
 
-            if (!title || !grade || !subject || !isbn || isNaN(stockCount) || stockCount < 1) { 
+            if (!title || !subject || !isbn || isNaN(stockCount) || stockCount < 1) {
                 inventoryFormMessage.textContent = 'All fields must be filled correctly.';
                 inventoryFormMessage.className = 'mt-3 text-sm text-red-500';
                 inventoryFormMessage.classList.remove('hidden');
@@ -1162,7 +1075,6 @@
 
             const newBook = {
                 title: title,
-                grade: grade, 
                 subject: subject,
                 isbn: isbn,
                 stockCount: stockCount,
@@ -1243,15 +1155,6 @@
             scannerMode = mode;
             targetInputId = inputId;
             
-            // NEW: Use the selected ID from the dropdown if available, otherwise fallback to auto-selected
-            const effectiveCameraId = cameraSelect.value || selectedCameraId;
-
-            if (!effectiveCameraId || cameraSelect.options.length === 0) { 
-                showTemporaryMessage("Error: No camera device was detected or initialized. Check permissions and try refreshing.", true);
-                scannerStatusEl.textContent = 'Error starting camera. No device found.';
-                return;
-            }
-
             scannerModal.classList.remove('hidden');
             const successHandler = (scannerMode === 'capture-isbn') ? onCaptureSuccess : onReturnSuccess;
             
@@ -1263,31 +1166,35 @@
                 scannerStatusEl.textContent = 'Point your camera at the unique barcode sticker.';
             }
 
+            // START OF FIX: Explicitly setting supported formats
+            
+            // Define formats based on global availability
+            // This is crucial for detecting EAN-13 (ISBN) barcodes
+            const formats = typeof Html5QrcodeSupportedFormats !== 'undefined' 
+                ? [
+                    Html5QrcodeSupportedFormats.CODE_128, // For your generated unique stickers
+                    Html5QrcodeSupportedFormats.EAN_13,    // For the physical book ISBN/Barcode
+                    Html5QrcodeSupportedFormats.UPC_A,     // Common in North America
+                    Html5QrcodeSupportedFormats.EAN_8,
+                    Html5QrcodeSupportedFormats.QR_CODE
+                ] 
+                : []; // Fallback if global is not found
 
             const config = { 
                 fps: 10, 
                 qrbox: { width: 250, height: 250 }, 
                 disableFlip: false,
-                formatsToSupport: [
-                    "EAN_13", 
-                    "CODE_128", 
-                    "UPC_A", 
-                    "QR_CODE", 
-                    "DATA_MATRIX" 
-                ]
+                formatsToSupport: formats // Use the dynamically created array
             };
             
             try {
-                 // UPDATED: Use the effectiveCameraId
-                 await html5QrcodeScanner.start(effectiveCameraId, config, successHandler);
-                 scannerStatusEl.textContent = 'Camera started successfully. Point at code to scan.';
+                 // Note: html5-qrcode works for both QR and linear barcodes
+                 await html5QrcodeScanner.start({ facingMode: "environment" }, config, successHandler);
             } catch (err) {
-                 scannerStatusEl.textContent = `Error starting camera: ${err.message}. Please check permissions or try selecting a different camera below.`;
+                 scannerStatusEl.textContent = 'Error starting camera. Check permissions.';
                  console.error("Camera Start Error:", err);
-                 showTemporaryMessage(`Camera Start Failed: ${err.message}`, true);
-                 // Force stop and close modal on failure
-                 // Do not force stop here, let the user try selecting another camera
             }
+            // END OF FIX
         }
 
 
@@ -1316,27 +1223,9 @@
         // Barcode Generator Listeners
         qrBatchForm.addEventListener('submit', generateBarcodes);
         printBatchBtn.addEventListener('click', printQrBatch);
-        
-        // NEW: Camera Select Listener for live camera switching
-        cameraSelect.addEventListener('change', async (e) => {
-            const newCameraId = e.target.value;
-            if (newCameraId && scannerModal.classList.contains('hidden') === false) {
-                 // If scanner is running and modal is open, stop and restart with new ID
-                 scannerStatusEl.textContent = "Switching camera...";
-                 try {
-                    // Try to stop gracefully, but don't fail the whole operation if stop fails
-                    await html5QrcodeScanner.stop();
-                 } catch (err) {
-                    console.warn("Error stopping scanner during camera switch:", err);
-                 }
-                 // Restart the scanner in the current mode
-                 await startScanner(scannerMode, targetInputId);
-                 showTemporaryMessage(`Switched camera to: ${e.target.options[e.target.selectedIndex].textContent}`, false);
-            }
-        });
 
 
-        // --- Start Application ---
+        // --- Start Application ---\
         document.addEventListener('DOMContentLoaded', initFirebase);
 
     </script>
