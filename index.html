@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Textbook Register - Barcode Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.9/html5-qrcode.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
     
@@ -156,7 +156,8 @@
                         <label for="invBookTitle" class="block text-sm font-medium text-gray-700">Book Title</label>
                         <input type="text" id="invBookTitle" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
                     </div>
-                    <div class="flex space-x-4">
+                    
+                    <div class="flex flex-col space-y-4 md:flex-row md:space-x-4 md:space-y-0">
                         <div class="flex-1">
                              <label for="invSubject" class="block text-sm font-medium text-gray-700">Subject</label>
                             <input type="text" id="invSubject" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
@@ -175,7 +176,7 @@
                                 </button>
                             </div>
                         </div>
-                        <div class="w-1/4">
+                        <div class="w-full md:w-1/4">
                              <label for="invStockCount" class="block text-sm font-medium text-gray-700">Total Stock</label>
                             <input type="number" id="invStockCount" required min="1" value="1" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
                         </div>
@@ -1166,25 +1167,11 @@
                 scannerStatusEl.textContent = 'Point your camera at the unique barcode sticker.';
             }
 
-            // START OF FIX: Explicitly setting supported formats
-            
-            // Define formats based on global availability
-            // This is crucial for detecting EAN-13 (ISBN) barcodes
-            const formats = typeof Html5QrcodeSupportedFormats !== 'undefined' 
-                ? [
-                    Html5QrcodeSupportedFormats.CODE_128, // For your generated unique stickers
-                    Html5QrcodeSupportedFormats.EAN_13,    // For the physical book ISBN/Barcode
-                    Html5QrcodeSupportedFormats.UPC_A,     // Common in North America
-                    Html5QrcodeSupportedFormats.EAN_8,
-                    Html5QrcodeSupportedFormats.QR_CODE
-                ] 
-                : []; // Fallback if global is not found
 
             const config = { 
                 fps: 10, 
                 qrbox: { width: 250, height: 250 }, 
-                disableFlip: false,
-                formatsToSupport: formats // Use the dynamically created array
+                disableFlip: false 
             };
             
             try {
@@ -1194,7 +1181,6 @@
                  scannerStatusEl.textContent = 'Error starting camera. Check permissions.';
                  console.error("Camera Start Error:", err);
             }
-            // END OF FIX
         }
 
 
@@ -1225,7 +1211,7 @@
         printBatchBtn.addEventListener('click', printQrBatch);
 
 
-        // --- Start Application ---\
+        // --- Start Application ---
         document.addEventListener('DOMContentLoaded', initFirebase);
 
     </script>
